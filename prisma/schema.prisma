@@ -1,0 +1,56 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// A single day's plan. Date is normalized to midnight UTC.
+model DayPlan {
+  id                   String      @id @default(uuid())
+  date                 DateTime    @unique // Normalized to midnight UTC
+  shutdownComplete     Boolean     @default(false)
+  currentRevisionIndex Int         @default(0)
+  dayEndMinutes        Int         @default(1320) // user's end-of-day (10:00 PM default)
+  timeBlocks           TimeBlock[]
+  capturedItems        Capture[]
+  metrics              Metric[]
+}
+
+// A time block placed on the grid. Minutes are stored as Int so layout math
+// (1 minute = 2px) works perfectly.
+model TimeBlock {
+  id            String   @id @default(uuid())
+  dayPlanId     String
+  dayPlan       DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  title         String
+  description   String   @default("") // optional notes: subtasks, agenda, etc.
+  blockType     String   @default("DEEP") // 'DEEP', 'SHALLOW', 'MEETING', ...
+  startMinutes  Int      // e.g., 540 (9:00 AM)
+  endMinutes    Int      // e.g., 630 (10:30 AM)
+  revisionIndex Int      @default(0)
+}
+
+// Distraction capture: tasks or ideas noted without context switching.
+model Capture {
+  id        String   @id @default(uuid())
+  dayPlanId String
+  dayPlan   DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  text      String
+  type      String   @default("TASK") // 'TASK' or 'IDEA'
+  isHandled Boolean  @default(false)
+}
+
+// Daily tracking metric (e.g. "Hours of Deep Work").
+model Metric {
+  id        String   @id @default(uuid())
+  dayPlanId String
+  dayPlan   DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  name      String
+  value     String
+}
