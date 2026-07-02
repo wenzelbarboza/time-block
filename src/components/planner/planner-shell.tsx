@@ -34,6 +34,7 @@ import { HistoryPanel } from "@/components/planner/history-panel";
 import { WeeklyView } from "@/components/planner/weekly-view";
 import { MonthlyView } from "@/components/planner/monthly-view";
 import { cn } from "@/lib/utils";
+import { signOut, useSession } from "next-auth/react";
 
 type ViewMode = "daily" | "weekly" | "monthly";
 
@@ -43,6 +44,8 @@ interface PlannerShellProps {
 }
 
 export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
+  const { data: session } = useSession();
+  const user = session?.user;
   const setActiveDayPlan = usePlannerStore((s) => s.setActiveDayPlan);
   const activeDayPlan = usePlannerStore((s) => s.activeDayPlan);
   const [view, setView] = useState<ViewMode>("daily");
@@ -189,6 +192,26 @@ export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
               >
                 {shutdownComplete ? "Shutdown Complete" : "Shutdown Pending"}
               </Button>
+            )}
+            {user && (
+              <div className="flex items-center gap-3 border-l pl-3 ml-1">
+                <div className="hidden flex-col items-end sm:flex">
+                  <span className="text-xs font-semibold text-foreground leading-tight">
+                    {user.name || user.email?.split("@")[0]}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground leading-none">
+                    {user.email}
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs font-medium text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors"
+                  onClick={() => signOut({ callbackUrl: "/login" })}
+                >
+                  Sign Out
+                </Button>
+              </div>
             )}
           </div>
         </div>

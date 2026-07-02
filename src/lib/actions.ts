@@ -8,9 +8,54 @@
  */
 
 import { db } from "@/lib/db";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import bcrypt from "bcryptjs";
 
 export type BlockType = string;
 export type CaptureType = "TASK" | "IDEA";
+
+/** Get the currently logged-in user or throw an error if unauthenticated. */
+export async function getCurrentUser() {
+  const session = await getServerSession(authOptions);
+  if (!session || !session.user || !session.user.email) {
+    throw new Error("Unauthorized");
+  }
+  const user = await db.user.findUnique({
+    where: { email: session.user.email },
+  });
+  if (!user) {
+    throw new Error("User not found");
+  }
+  return user;
+}
+
+/** Register a new user with hashed password. */
+export async function registerUser(email: string, passwordStr: string, name?: string) {
+  if (!email || !passwordStr) {
+    throw new Error("Email and password are required");
+  }
+
+  const existing = await db.user.findUnique({
+    where: { email },
+  });
+
+  if (existing) {
+    throw new Error("A user with this email address already exists");
+  }
+
+  const hashedPassword = await bcrypt.hash(passwordStr, 10);
+
+  const user = await db.user.create({
+    data: {
+      email,
+      password: hashedPassword,
+      name: name ?? null,
+    },
+  });
+
+  return { id: user.id, email: user.email, name: user.name };
+}
 
 /**
  * Normalized date string (YYYY-MM-DD) to a UTC-midnight Date.
@@ -25,12 +70,16 @@ export async function normalizeDate(dateStr: string): Promise<Date> {
  * Always returns the full nested graph (blocks, captures, metrics).
  */
 export async function fetchOrCreateDayPlan(dateStr: string) {
+  const user = await getCurrentUser();
   const date = await normalizeDate(dateStr);
-  // upsert on the unique `date` field
+  
+  // upsert on the compound unique key: [date, userId]
   const plan = await db.dayPlan.upsert({
-    where: { date },
+    where: {
+      date_userId: { date, userId: user.id },
+    },
     update: {},
-    create: { date },
+    create: { date, userId: user.id },
     include: {
       timeBlocks: { orderBy: { startMinutes: "asc" } },
       capturedItems: { orderBy: { id: "asc" } },
@@ -46,7 +95,9 @@ export async function fetchOrCreateDayPlan(dateStr: string) {
  * the deep-work metric value.
  */
 export async function listDayPlanSummaries() {
+  const user = await getCurrentUser();
   const plans = await db.dayPlan.findMany({
+    where: { userId: user.id },
     orderBy: { date: "desc" },
     include: {
       _count: { select: { timeBlocks: true, capturedItems: true } },
@@ -55,8 +106,6 @@ export async function listDayPlanSummaries() {
     },
   });
   return plans.map((p) => {
-    // Total scheduled minutes across all revisions (deduped by rough overlap
-    // isn't worth it; just sum block durations).
     const totalMinutes = p.timeBlocks.reduce(
       (sum, b) => sum + (b.endMinutes - b.startMinutes),
       0
@@ -82,6 +131,12 @@ export async function listDayPlanSummaries() {
 
 /** Seed a few demo blocks so the grid isn't empty on first load. */
 export async function seedDemoBlocks(dayPlanId: string, revisionIndex = 0) {
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: dayPlanId, userId: user.id },
+  });
+  if (!plan) throw new Error("Unauthorized");
+
   const existing = await db.timeBlock.count({ where: { dayPlanId } });
   if (existing > 0) return false;
   await db.timeBlock.createMany({
@@ -164,6 +219,12 @@ export async function createTimeBlock(input: {
   endMinutes: number;
   revisionIndex: number;
 }) {
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: input.dayPlanId, userId: user.id },
+  });
+  if (!plan) throw new Error("Unauthorized");
+
   return db.timeBlock.create({
     data: { ...input, description: input.description ?? "" },
   });
@@ -179,10 +240,22 @@ export async function updateTimeBlock(
     blockType?: string;
   }
 ) {
+  const user = await getCurrentUser();
+  const block = await db.timeBlock.findFirst({
+    where: { id, dayPlan: { userId: user.id } },
+  });
+  if (!block) throw new Error("Unauthorized");
+
   return db.timeBlock.update({ where: { id }, data: updates });
 }
 
 export async function deleteTimeBlock(id: string) {
+  const user = await getCurrentUser();
+  const block = await db.timeBlock.findFirst({
+    where: { id, dayPlan: { userId: user.id } },
+  });
+  if (!block) throw new Error("Unauthorized");
+
   return db.timeBlock.delete({ where: { id } });
 }
 
@@ -195,14 +268,32 @@ export async function createCapture(input: {
   text: string;
   type: CaptureType;
 }) {
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: input.dayPlanId, userId: user.id },
+  });
+  if (!plan) throw new Error("Unauthorized");
+
   return db.capture.create({ data: input });
 }
 
 export async function toggleCaptureHandled(id: string, isHandled: boolean) {
+  const user = await getCurrentUser();
+  const capture = await db.capture.findFirst({
+    where: { id, dayPlan: { userId: user.id } },
+  });
+  if (!capture) throw new Error("Unauthorized");
+
   return db.capture.update({ where: { id }, data: { isHandled } });
 }
 
 export async function deleteCapture(id: string) {
+  const user = await getCurrentUser();
+  const capture = await db.capture.findFirst({
+    where: { id, dayPlan: { userId: user.id } },
+  });
+  if (!capture) throw new Error("Unauthorized");
+
   return db.capture.delete({ where: { id } });
 }
 
@@ -215,7 +306,12 @@ export async function upsertMetric(input: {
   name: string;
   value: string;
 }) {
-  // One metric per (dayPlanId, name) — upsert on the compound uniqueness.
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: input.dayPlanId, userId: user.id },
+  });
+  if (!plan) throw new Error("Unauthorized");
+
   const existing = await db.metric.findFirst({
     where: { dayPlanId: input.dayPlanId, name: input.name },
   });
@@ -226,6 +322,12 @@ export async function upsertMetric(input: {
 }
 
 export async function deleteMetric(id: string) {
+  const user = await getCurrentUser();
+  const metric = await db.metric.findFirst({
+    where: { id, dayPlan: { userId: user.id } },
+  });
+  if (!metric) throw new Error("Unauthorized");
+
   return db.metric.delete({ where: { id } });
 }
 
@@ -234,25 +336,25 @@ export async function deleteMetric(id: string) {
 // ---------------------------------------------------------------------------
 
 export async function pivotSchedule(dayPlanId: string) {
-  const plan = await db.dayPlan.findUnique({ where: { id: dayPlanId } });
-  if (!plan) throw new Error("DayPlan not found");
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: dayPlanId, userId: user.id },
+  });
+  if (!plan) throw new Error("Unauthorized");
+
   return db.dayPlan.update({
     where: { id: dayPlanId },
     data: { currentRevisionIndex: plan.currentRevisionIndex + 1 },
   });
 }
 
-/**
- * Undo the most recent pivot: decrements currentRevisionIndex back by one.
- * Only allowed when the latest revision column has no blocks (so no work is
- * lost). Throws if there's nothing to undo or the column isn't empty.
- */
 export async function undoPivot(dayPlanId: string) {
-  const plan = await db.dayPlan.findUnique({
-    where: { id: dayPlanId },
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: dayPlanId, userId: user.id },
     include: { timeBlocks: { select: { revisionIndex: true } } },
   });
-  if (!plan) throw new Error("DayPlan not found");
+  if (!plan) throw new Error("DayPlan not found or unauthorized");
   if (plan.currentRevisionIndex <= 0) {
     throw new Error("Nothing to undo");
   }
@@ -269,14 +371,25 @@ export async function undoPivot(dayPlanId: string) {
 }
 
 export async function toggleShutdown(dayPlanId: string, shutdownComplete: boolean) {
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: dayPlanId, userId: user.id },
+  });
+  if (!plan) throw new Error("Unauthorized");
+
   return db.dayPlan.update({
     where: { id: dayPlanId },
     data: { shutdownComplete },
   });
 }
 
-/** Update the user's configurable end-of-day (minutes from midnight). */
 export async function updateDayEnd(dayPlanId: string, dayEndMinutes: number) {
+  const user = await getCurrentUser();
+  const plan = await db.dayPlan.findFirst({
+    where: { id: dayPlanId, userId: user.id },
+  });
+  if (!plan) throw new Error("Unauthorized");
+
   const clamped = Math.max(0, Math.min(1440, Math.round(dayEndMinutes)));
   return db.dayPlan.update({
     where: { id: dayPlanId },

@@ -10,16 +10,30 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  password  String    // Hashed password
+  name      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  dayPlans  DayPlan[]
+}
+
 // A single day's plan. Date is normalized to midnight UTC.
 model DayPlan {
   id                   String      @id @default(uuid())
-  date                 DateTime    @unique // Normalized to midnight UTC
+  date                 DateTime    // Normalized to midnight UTC
+  userId               String
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   shutdownComplete     Boolean     @default(false)
   currentRevisionIndex Int         @default(0)
   dayEndMinutes        Int         @default(1320) // user's end-of-day (10:00 PM default)
   timeBlocks           TimeBlock[]
   capturedItems        Capture[]
   metrics              Metric[]
+
+  @@unique([date, userId])
 }
 
 // A time block placed on the grid. Minutes are stored as Int so layout math
