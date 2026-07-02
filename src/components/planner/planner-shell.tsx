@@ -35,6 +35,7 @@ import { WeeklyView } from "@/components/planner/weekly-view";
 import { MonthlyView } from "@/components/planner/monthly-view";
 import { cn } from "@/lib/utils";
 import { signOut, useSession } from "next-auth/react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 type ViewMode = "daily" | "weekly" | "monthly";
 
@@ -193,6 +194,7 @@ export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
                 {shutdownComplete ? "Shutdown Complete" : "Shutdown Pending"}
               </Button>
             )}
+            <ThemeToggle />
             {user && (
               <div className="flex items-center gap-3 border-l pl-3 ml-1">
                 <div className="hidden flex-col items-end sm:flex">

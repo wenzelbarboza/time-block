@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Clock, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { registerUser } from "@/lib/actions";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -61,28 +62,32 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-slate-950 px-4 py-12 text-slate-100 sm:px-6 lg:px-8">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4 py-12 text-foreground sm:px-6 lg:px-8 transition-colors duration-200">
+      {/* Top right theme toggle */}
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Decorative ambient gradients */}
-      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-indigo-900/20 via-slate-950 to-slate-950" />
-      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] from-blue-900/10 via-slate-950 to-slate-950" />
+      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-muted/30 via-background to-background" />
 
       <div className="relative z-10 w-full max-w-md space-y-8">
         <div className="flex flex-col items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-[0_0_20px_rgba(79,70,229,0.4)] transition-transform hover:scale-105">
-            <Clock className="h-6 w-6" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+            <Clock className="h-5 w-5" />
           </div>
-          <h2 className="mt-6 text-3xl font-extrabold tracking-tight bg-gradient-to-r from-indigo-200 via-slate-100 to-indigo-200 bg-clip-text text-transparent">
+          <h2 className="mt-6 text-3xl font-bold tracking-tight text-foreground">
             Create your account
           </h2>
-          <p className="mt-2 text-sm text-slate-400">
+          <p className="mt-2 text-sm text-muted-foreground">
             Get started with your digital Cal Newport time-block planner
           </p>
         </div>
 
-        <div className="rounded-2xl border border-slate-800/80 bg-slate-900/50 p-8 shadow-2xl backdrop-blur-xl">
+        <div className="rounded-xl border border-border bg-card p-8 shadow-lg text-card-foreground">
           <form className="space-y-5" onSubmit={handleSubmit}>
             {error && (
-              <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-950/30 p-3.5 text-sm text-red-400">
+              <div className="flex items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 p-3.5 text-sm text-destructive">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{error}</span>
               </div>
@@ -96,8 +101,8 @@ export default function RegisterPage() {
             )}
 
             <div className="space-y-1.5">
-              <label htmlFor="name" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Full Name <span className="text-slate-500 font-normal">(Optional)</span>
+              <label htmlFor="name" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Full Name <span className="text-muted-foreground/60 font-normal">(Optional)</span>
               </label>
               <input
                 id="name"
@@ -105,13 +110,13 @@ export default function RegisterPage() {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 placeholder-slate-500 transition-all focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="block w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:ring-2 focus:ring-ring focus:outline-none"
                 placeholder="Cal Newport"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <label htmlFor="email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Email address
               </label>
               <input
@@ -121,13 +126,13 @@ export default function RegisterPage() {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 placeholder-slate-500 transition-all focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="block w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:ring-2 focus:ring-ring focus:outline-none"
                 placeholder="you@example.com"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <label htmlFor="password" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Password
               </label>
               <input
@@ -137,13 +142,13 @@ export default function RegisterPage() {
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 placeholder-slate-500 transition-all focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="block w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:ring-2 focus:ring-ring focus:outline-none"
                 placeholder="Min. 6 characters"
               />
             </div>
 
             <div className="space-y-1.5">
-              <label htmlFor="confirmPassword" className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+              <label htmlFor="confirmPassword" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 Confirm Password
               </label>
               <input
@@ -153,7 +158,7 @@ export default function RegisterPage() {
                 required
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
-                className="block w-full rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-3 text-sm text-slate-200 placeholder-slate-500 transition-all focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="block w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground transition-all focus:ring-2 focus:ring-ring focus:outline-none"
                 placeholder="••••••••"
               />
             </div>
@@ -161,7 +166,7 @@ export default function RegisterPage() {
             <Button
               type="submit"
               disabled={loading || success}
-              className="relative w-full rounded-xl bg-indigo-600 py-6 text-sm font-semibold text-white shadow-lg shadow-indigo-600/30 hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 disabled:opacity-50"
+              className="relative w-full rounded-lg bg-primary py-5 text-sm font-semibold text-primary-foreground shadow hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -174,11 +179,11 @@ export default function RegisterPage() {
             </Button>
           </form>
 
-          <div className="mt-8 text-center text-sm text-slate-400">
+          <div className="mt-8 text-center text-sm text-muted-foreground">
             Already have an account?{" "}
             <Link
               href="/login"
-              className="font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="font-medium text-primary hover:underline transition-all"
             >
               Sign in
             </Link>
