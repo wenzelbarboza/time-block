@@ -49,16 +49,42 @@ export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
   const user = session?.user;
   const setActiveDayPlan = usePlannerStore((s) => s.setActiveDayPlan);
   const activeDayPlan = usePlannerStore((s) => s.activeDayPlan);
+  const fetchDayPlan = usePlannerStore((s) => s.fetchDayPlan);
+  
+  const [activeDateStr, setActiveDateStr] = useState(dateStr);
+  const isPlanLoading = usePlannerStore((s) => s.isLoading[activeDateStr] ?? false);
   const [view, setView] = useState<ViewMode>("daily");
 
-  // Hydrate the store on the client. SSR + first client render use the prop
-  // directly (passed to PivotGrid) so there's no hydration mismatch; the store
-  // takes over once hydrated to power live mutations.
+  // Sync state if initial prop changes
   useEffect(() => {
-    setActiveDayPlan(dayPlan);
-  }, [dayPlan, setActiveDayPlan]);
+    setActiveDateStr(dateStr);
+  }, [dateStr]);
 
-  const currentDate = parseISO(dateStr);
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const urlDate = params.get("date");
+      if (urlDate && /^\d{4}-\d{2}-\d{2}$/.test(urlDate)) {
+        setActiveDateStr(urlDate);
+      }
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  // Hydrate the store on the client. SSR + first client render use the prop
+  // directly so there's no hydration mismatch; the store takes over.
+  useEffect(() => {
+    setActiveDayPlan(dayPlan, dateStr);
+  }, [dayPlan, dateStr, setActiveDayPlan]);
+
+  // Fetch/load the plan whenever the active date changes
+  useEffect(() => {
+    fetchDayPlan(activeDateStr);
+  }, [activeDateStr, fetchDayPlan]);
+
+  const currentDate = parseISO(activeDateStr);
 
   // Header date label adapts to the view.
   const displayDate = (() => {
@@ -73,17 +99,18 @@ export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
       }
       return format(currentDate, "EEEE, MMMM d, yyyy");
     } catch {
-      return dateStr;
+      return activeDateStr;
     }
   })();
 
   const revisionIndex = activeDayPlan?.currentRevisionIndex ?? dayPlan.currentRevisionIndex;
   const shutdownComplete = activeDayPlan?.shutdownComplete ?? dayPlan.shutdownComplete;
 
-  // Navigate to a different date by updating the URL query param.
+  // Navigate to a different date by updating the local state and history.
   const navigateToDate = (date: Date) => {
     const newDateStr = format(date, "yyyy-MM-dd");
-    window.location.href = `/?date=${newDateStr}`;
+    setActiveDateStr(newDateStr);
+    window.history.pushState(null, "", `/?date=${newDateStr}`);
   };
 
   // Prev/next respects the view mode.
@@ -183,7 +210,7 @@ export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
                 Revision {revisionIndex}
               </span>
             )}
-            <HistoryPanel currentDate={dateStr} onSelectDate={navigateToDay} />
+            <HistoryPanel currentDate={activeDateStr} onSelectDate={navigateToDay} />
             {view === "daily" && (
               <Button
                 variant={shutdownComplete ? "outline" : "secondary"}
@@ -224,22 +251,33 @@ export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
         <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 p-4 sm:p-6 lg:flex-row">
           {/* Left column — Capture & Metrics */}
           <aside className="w-full shrink-0 space-y-4 lg:w-80">
-            <CapturePanel disabled={shutdownComplete} />
-            <MetricsPanel disabled={shutdownComplete} />
+            <CapturePanel disabled={shutdownComplete || isPlanLoading} />
+            <MetricsPanel disabled={shutdownComplete || isPlanLoading} />
             <ShutdownControl />
           </aside>
           {/* Right column — Time-Block Grid */}
-          <main className="min-w-0 flex-1">
-            <PivotGrid dayPlan={dayPlan} dateStr={dateStr} disabled={shutdownComplete} />
+          <main className="min-w-0 flex-1 relative">
+            {isPlanLoading ? (
+              <div className="flex h-[800px] w-full items-center justify-center rounded-lg border border-dashed bg-card/50 backdrop-blur-xs">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                  <p className="text-sm text-muted-foreground animate-pulse">Loading daily schedule...</p>
+                </div>
+              </div>
+            ) : activeDayPlan ? (
+              <PivotGrid dayPlan={activeDayPlan} dateStr={activeDateStr} disabled={shutdownComplete} />
+            ) : (
+              <PivotGrid dayPlan={dayPlan} dateStr={activeDateStr} disabled={shutdownComplete} />
+            )}
           </main>
         </div>
       ) : view === "weekly" ? (
         <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">
-          <WeeklyView currentDate={dateStr} onSelectDay={navigateToDay} />
+          <WeeklyView currentDate={activeDateStr} onSelectDay={navigateToDay} />
         </main>
       ) : (
         <main className="mx-auto w-full max-w-7xl flex-1 p-4 sm:p-6">
-          <MonthlyView currentDate={dateStr} onSelectDay={navigateToDay} />
+          <MonthlyView currentDate={activeDateStr} onSelectDay={navigateToDay} />
         </main>
       )}
 

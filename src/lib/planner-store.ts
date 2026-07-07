@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { api } from "@/lib/api-client";
 
 export interface TimeBlock {
   id: string;
@@ -49,9 +50,13 @@ export interface DayPlan {
 
 interface PlannerStore {
   activeDayPlan: DayPlan | null;
+  activeDateStr: string | null;
+  cachedDayPlans: Record<string, DayPlan>;
+  isLoading: Record<string, boolean>;
   /** Overlay of block mutations applied on top of activeDayPlan.timeBlocks. */
   optimisticBlocks: Record<string, Partial<TimeBlock>>;
-  setActiveDayPlan: (plan: DayPlan | null) => void;
+  setActiveDayPlan: (plan: DayPlan | null, dateStr?: string) => void;
+  fetchDayPlan: (dateStr: string) => Promise<void>;
   /** Get the effective block (server data merged with optimistic patch). */
   getBlock: (id: string) => TimeBlock | undefined;
   /** Apply an optimistic patch to a block (e.g. during/after a drag). */
@@ -70,10 +75,92 @@ interface PlannerStore {
 
 export const usePlannerStore = create<PlannerStore>((set, get) => ({
   activeDayPlan: null,
+  activeDateStr: null,
+  cachedDayPlans: {},
+  isLoading: {},
   optimisticBlocks: {},
 
-  setActiveDayPlan: (plan) =>
-    set({ activeDayPlan: plan, optimisticBlocks: {} }),
+  setActiveDayPlan: (plan, dateStr) =>
+    set((state) => {
+      const updates: Partial<PlannerStore> = {
+        activeDayPlan: plan,
+        optimisticBlocks: {},
+      };
+      if (dateStr) {
+        updates.activeDateStr = dateStr;
+        if (plan) {
+          updates.cachedDayPlans = {
+            ...state.cachedDayPlans,
+            [dateStr]: plan,
+          };
+        }
+      }
+      return updates;
+    }),
+
+  fetchDayPlan: async (dateStr) => {
+    const { cachedDayPlans } = get();
+
+    // 1. If we have the plan cached, set it immediately (0ms transition)
+    if (cachedDayPlans[dateStr]) {
+      set({ activeDayPlan: cachedDayPlans[dateStr], activeDateStr: dateStr });
+    } else {
+      // 2. Otherwise set loading for this date and fetch
+      set((state) => ({
+        isLoading: { ...state.isLoading, [dateStr]: true },
+        activeDateStr: dateStr,
+      }));
+
+      try {
+        const plan = await api.fetchDayPlan(dateStr);
+        const parsedPlan: DayPlan = {
+          ...plan,
+          date: new Date(plan.date),
+        };
+        set((state) => ({
+          activeDayPlan: parsedPlan,
+          cachedDayPlans: { ...state.cachedDayPlans, [dateStr]: parsedPlan },
+        }));
+      } catch (err) {
+        console.error("Failed to fetch day plan:", err);
+      } finally {
+        set((state) => ({
+          isLoading: { ...state.isLoading, [dateStr]: false },
+        }));
+      }
+    }
+
+    // 3. Prefetch next/prev days in the background
+    try {
+      const currentDate = new Date(`${dateStr}T00:00:00.000Z`);
+      const prevDate = new Date(currentDate.getTime() - 24 * 60 * 60 * 1000);
+      const nextDate = new Date(currentDate.getTime() + 24 * 60 * 60 * 1000);
+      const prevDateStr = prevDate.toISOString().split("T")[0];
+      const nextDateStr = nextDate.toISOString().split("T")[0];
+
+      const prefetch = async (dStr: string) => {
+        const { cachedDayPlans: currentCache, isLoading: currentLoading } = get();
+        if (currentCache[dStr] || currentLoading[dStr]) return;
+        try {
+          const plan = await api.fetchDayPlan(dStr);
+          const parsedPlan: DayPlan = {
+            ...plan,
+            date: new Date(plan.date),
+          };
+          set((state) => ({
+            cachedDayPlans: { ...state.cachedDayPlans, [dStr]: parsedPlan },
+          }));
+        } catch {
+          // ignore prefetch errors
+        }
+      };
+
+      prefetch(prevDateStr);
+      prefetch(nextDateStr);
+    } catch {
+      // ignore date calculation errors
+    }
+  },
 
   getBlock: (id) => {
     const { activeDayPlan, optimisticBlocks } = get();
@@ -100,37 +187,54 @@ export const usePlannerStore = create<PlannerStore>((set, get) => ({
     }),
 
   setBlocks: (blocks) =>
-    set((state) => ({
-      activeDayPlan: state.activeDayPlan
-        ? { ...state.activeDayPlan, timeBlocks: blocks }
-        : state.activeDayPlan,
-      optimisticBlocks: {},
-    })),
+    set((state) => {
+      if (!state.activeDayPlan) return {};
+      const updatedPlan = { ...state.activeDayPlan, timeBlocks: blocks };
+      return {
+        activeDayPlan: updatedPlan,
+        optimisticBlocks: {},
+      };
+    }),
 
   addBlock: (block) =>
-    set((state) => ({
-      activeDayPlan: state.activeDayPlan
-        ? {
-            ...state.activeDayPlan,
-            timeBlocks: [...state.activeDayPlan.timeBlocks, block],
-          }
-        : state.activeDayPlan,
-    })),
+    set((state) => {
+      if (!state.activeDayPlan) return {};
+      const updatedPlan = {
+        ...state.activeDayPlan,
+        timeBlocks: [...state.activeDayPlan.timeBlocks, block],
+      };
+      return {
+        activeDayPlan: updatedPlan,
+      };
+    }),
 
   removeBlock: (id) =>
-    set((state) => ({
-      activeDayPlan: state.activeDayPlan
-        ? {
-            ...state.activeDayPlan,
-            timeBlocks: state.activeDayPlan.timeBlocks.filter((b) => b.id !== id),
-          }
-        : state.activeDayPlan,
-    })),
+    set((state) => {
+      if (!state.activeDayPlan) return {};
+      const updatedPlan = {
+        ...state.activeDayPlan,
+        timeBlocks: state.activeDayPlan.timeBlocks.filter((b) => b.id !== id),
+      };
+      return {
+        activeDayPlan: updatedPlan,
+      };
+    }),
 
   patchDayPlan: (updates) =>
-    set((state) => ({
-      activeDayPlan: state.activeDayPlan
-        ? { ...state.activeDayPlan, ...updates }
-        : state.activeDayPlan,
-    })),
+    set((state) => {
+      if (!state.activeDayPlan) return {};
+      const updatedPlan = { ...state.activeDayPlan, ...updates };
+      return {
+        activeDayPlan: updatedPlan,
+      };
+    }),
 }));
+
+// Subscribe to activeDayPlan changes and update cachedDayPlans automatically
+usePlannerStore.subscribe((state) => {
+  if (state.activeDayPlan && state.activeDateStr) {
+    if (state.cachedDayPlans[state.activeDateStr] !== state.activeDayPlan) {
+      state.cachedDayPlans[state.activeDateStr] = state.activeDayPlan;
+    }
+  }
+});
