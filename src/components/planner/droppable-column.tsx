@@ -11,6 +11,7 @@
 import * as React from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { Plus } from "lucide-react";
+import { parseISO, isToday as isDateToday, isBefore, startOfDay } from "date-fns";
 
 import { cn } from "@/lib/utils";
 import {
@@ -32,6 +33,7 @@ interface DroppableColumnProps {
   /** The id of the block currently being dragged (to hide its original). */
   draggingBlockId?: string | null;
   now?: number | null;
+  dateStr: string;
   disabled?: boolean;
   onAddBlock?: (revisionIndex: number, startMinutes: number) => void;
   onDeleteBlock?: (id: string) => void;
@@ -45,6 +47,7 @@ export function DroppableColumn({
   blocks,
   draggingBlockId,
   now,
+  dateStr,
   disabled,
   onAddBlock,
   onDeleteBlock,
@@ -118,10 +121,18 @@ export function DroppableColumn({
       {blocks.map((rawBlock) => {
         // Merge optimistic overlay so the block visually moves/resizes instantly.
         const block = getBlock(rawBlock.id) ?? rawBlock;
-        // Strike through COMPLETED blocks (whose end time has passed), not
-        // upcoming ones. Applies across all revisions so you can see at a
-        // glance which scheduled blocks are already done.
-        const struck = now !== null && block.endMinutes <= nowMin;
+        // Strike through COMPLETED blocks (whose end time has passed) relative
+        // to the actual present time.
+        // - If this is a past date, all blocks are completed.
+        // - If this is a future date, no blocks are completed.
+        // - If this is today, blocks ending before the current time are completed.
+        const parsedDate = parseISO(dateStr);
+        const today = new Date();
+        const isPastDate = isBefore(startOfDay(parsedDate), startOfDay(today));
+        const isTodayDate = isDateToday(parsedDate);
+        const struck =
+          now !== null &&
+          (isPastDate || (isTodayDate && block.endMinutes <= nowMin));
         return (
           <DraggableBlock
             key={block.id}

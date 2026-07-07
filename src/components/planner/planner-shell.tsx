@@ -230,7 +230,7 @@ export function PlannerShell({ dayPlan, dateStr }: PlannerShellProps) {
           </aside>
           {/* Right column — Time-Block Grid */}
           <main className="min-w-0 flex-1">
-            <PivotGrid dayPlan={dayPlan} disabled={shutdownComplete} />
+            <PivotGrid dayPlan={dayPlan} dateStr={dateStr} disabled={shutdownComplete} />
           </main>
         </div>
       ) : view === "weekly" ? (

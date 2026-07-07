@@ -21,6 +21,7 @@
  */
 
 import * as React from "react";
+import { format } from "date-fns";
 import { Repeat, Trash2, Undo2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -61,10 +62,11 @@ import { PlannerDndContext } from "@/components/planner/planner-dnd-context";
 interface PivotGridProps {
   /** Authoritative day plan from the server (used for SSR + first client render). */
   dayPlan: DayPlan;
+  dateStr: string;
   disabled?: boolean;
 }
 
-export function PivotGrid({ dayPlan, disabled }: PivotGridProps) {
+export function PivotGrid({ dayPlan, dateStr, disabled }: PivotGridProps) {
   const { toast } = useToast();
   // Prefer the store (powers live mutations); fall back to the server prop so
   // SSR and the first client render are correct with no hydration mismatch.
@@ -140,13 +142,13 @@ export function PivotGrid({ dayPlan, disabled }: PivotGridProps) {
   const legendTypes =
     usedTypeValues.length > 0
       ? usedTypeValues
-          .map((v) => getBlockType(v))
-          // Keep the canonical order from BLOCK_TYPES.
-          .sort(
-            (a, b) =>
-              BLOCK_TYPES.findIndex((t) => t.value === a.value) -
-              BLOCK_TYPES.findIndex((t) => t.value === b.value)
-          )
+        .map((v) => getBlockType(v))
+        // Keep the canonical order from BLOCK_TYPES.
+        .sort(
+          (a, b) =>
+            BLOCK_TYPES.findIndex((t) => t.value === a.value) -
+            BLOCK_TYPES.findIndex((t) => t.value === b.value)
+        )
       : BLOCK_TYPES;
 
   const handleAddBlock = (revisionIndex: number, startMinutes: number) => {
@@ -253,8 +255,10 @@ export function PivotGrid({ dayPlan, disabled }: PivotGridProps) {
     }
   };
 
+  const todayStr = now !== null ? format(new Date(), "yyyy-MM-dd") : "";
+  const isTodayDate = dateStr === todayStr;
   const nowInGrid =
-    now !== null && now >= GRID_START_MINUTES && now <= GRID_END_MINUTES;
+    isTodayDate && now !== null && now >= GRID_START_MINUTES && now <= GRID_END_MINUTES;
   const nowTop = now !== null ? minutesToPixels(clampToGrid(now)) : 0;
 
   // Configurable end-of-day.
@@ -349,6 +353,7 @@ export function PivotGrid({ dayPlan, disabled }: PivotGridProps) {
                     currentRevisionIndex={currentRevisionIndex}
                     blocks={blocksByRevision[r] ?? []}
                     now={now}
+                    dateStr={dateStr}
                     disabled={disabled}
                     onAddBlock={handleAddBlock}
                     onDeleteBlock={handleDeleteBlock}
