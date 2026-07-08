@@ -22,9 +22,10 @@ import {
 } from "date-fns";
 import { Brain, CheckCircle2, Clock } from "lucide-react";
 
-import { api, type DayPlanSummary } from "@/lib/api-client";
+import { type DayPlanSummary } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { usePlannerStore } from "@/lib/planner-store";
 
 interface MonthlyViewProps {
   currentDate: string;
@@ -34,16 +35,13 @@ interface MonthlyViewProps {
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 export function MonthlyView({ currentDate, onSelectDay }: MonthlyViewProps) {
-  const [summaries, setSummaries] = React.useState<DayPlanSummary[] | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const summaries = usePlannerStore((s) => s.historySummaries);
+  const loading = usePlannerStore((s) => s.historyLoading || s.historySummaries === null);
+  const fetchHistory = usePlannerStore((s) => s.fetchHistory);
 
   React.useEffect(() => {
-    api
-      .fetchHistory()
-      .then(setSummaries)
-      .catch(() => setSummaries([]))
-      .finally(() => setLoading(false));
-  }, []);
+    fetchHistory();
+  }, [fetchHistory]);
 
   const focusDate = parseISO(currentDate);
   const monthStart = startOfMonth(focusDate);

@@ -20,10 +20,11 @@ import {
 } from "date-fns";
 import { Brain, CheckCircle2, Clock } from "lucide-react";
 
-import { api, type DayPlanSummary } from "@/lib/api-client";
+import { type DayPlanSummary } from "@/lib/api-client";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getBlockType } from "@/lib/block-types";
 import { cn } from "@/lib/utils";
+import { usePlannerStore } from "@/lib/planner-store";
 
 interface WeeklyViewProps {
   currentDate: string;
@@ -31,16 +32,13 @@ interface WeeklyViewProps {
 }
 
 export function WeeklyView({ currentDate, onSelectDay }: WeeklyViewProps) {
-  const [summaries, setSummaries] = React.useState<DayPlanSummary[] | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const summaries = usePlannerStore((s) => s.historySummaries);
+  const loading = usePlannerStore((s) => s.historyLoading || s.historySummaries === null);
+  const fetchHistory = usePlannerStore((s) => s.fetchHistory);
 
   React.useEffect(() => {
-    api
-      .fetchHistory()
-      .then(setSummaries)
-      .catch(() => setSummaries([]))
-      .finally(() => setLoading(false));
-  }, []);
+    fetchHistory();
+  }, [fetchHistory]);
 
   const focusDate = parseISO(currentDate);
   const weekStart = startOfWeek(focusDate, { weekStartsOn: 1 }); // Monday

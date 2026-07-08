@@ -29,9 +29,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, type DayPlanSummary } from "@/lib/api-client";
+import { type DayPlanSummary } from "@/lib/api-client";
 import { formatDuration } from "@/lib/timeUtils";
 import { cn } from "@/lib/utils";
+import { usePlannerStore } from "@/lib/planner-store";
 
 interface HistoryPanelProps {
   /** The currently-viewed date (YYYY-MM-DD), to highlight in the list. */
@@ -42,25 +43,15 @@ interface HistoryPanelProps {
 
 export function HistoryPanel({ currentDate, onSelectDate }: HistoryPanelProps) {
   const [open, setOpen] = React.useState(false);
-  const [summaries, setSummaries] = React.useState<DayPlanSummary[] | null>(null);
-  const [loading, setLoading] = React.useState(false);
-
-  // Fetch history when the panel opens.
-  const loadHistory = React.useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await api.fetchHistory();
-      setSummaries(data);
-    } catch {
-      setSummaries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const summaries = usePlannerStore((s) => s.historySummaries);
+  const loading = usePlannerStore((s) => s.historyLoading || s.historySummaries === null);
+  const fetchHistory = usePlannerStore((s) => s.fetchHistory);
 
   React.useEffect(() => {
-    if (open) loadHistory();
-  }, [open, loadHistory]);
+    if (open) {
+      fetchHistory();
+    }
+  }, [open, fetchHistory]);
 
   const handleSelect = (date: string) => {
     onSelectDate(date);

@@ -9,7 +9,7 @@
  */
 
 import { create } from "zustand";
-import { api } from "@/lib/api-client";
+import { api, type DayPlanSummary } from "@/lib/api-client";
 
 export interface TimeBlock {
   id: string;
@@ -55,8 +55,11 @@ interface PlannerStore {
   isLoading: Record<string, boolean>;
   /** Overlay of block mutations applied on top of activeDayPlan.timeBlocks. */
   optimisticBlocks: Record<string, Partial<TimeBlock>>;
+  historySummaries: DayPlanSummary[] | null;
+  historyLoading: boolean;
   setActiveDayPlan: (plan: DayPlan | null, dateStr?: string) => void;
   fetchDayPlan: (dateStr: string) => Promise<void>;
+  fetchHistory: () => Promise<void>;
   /** Get the effective block (server data merged with optimistic patch). */
   getBlock: (id: string) => TimeBlock | undefined;
   /** Apply an optimistic patch to a block (e.g. during/after a drag). */
@@ -79,6 +82,8 @@ export const usePlannerStore = create<PlannerStore>((set, get) => ({
   cachedDayPlans: {},
   isLoading: {},
   optimisticBlocks: {},
+  historySummaries: null,
+  historyLoading: false,
 
   setActiveDayPlan: (plan, dateStr) =>
     set((state) => {
@@ -97,6 +102,21 @@ export const usePlannerStore = create<PlannerStore>((set, get) => ({
       }
       return updates;
     }),
+
+  fetchHistory: async () => {
+    const { historySummaries } = get();
+    if (historySummaries !== null) return; // already cached
+    set({ historyLoading: true });
+    try {
+      const data = await api.fetchHistory();
+      set({ historySummaries: data });
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
+      set({ historySummaries: [] });
+    } finally {
+      set({ historyLoading: false });
+    }
+  },
 
   fetchDayPlan: async (dateStr) => {
     const { cachedDayPlans } = get();
@@ -233,8 +253,63 @@ export const usePlannerStore = create<PlannerStore>((set, get) => ({
 // Subscribe to activeDayPlan changes and update cachedDayPlans automatically
 usePlannerStore.subscribe((state) => {
   if (state.activeDayPlan && state.activeDateStr) {
+    // 1. Sync cachedDayPlans
     if (state.cachedDayPlans[state.activeDateStr] !== state.activeDayPlan) {
       state.cachedDayPlans[state.activeDateStr] = state.activeDayPlan;
+    }
+
+    // 2. Sync historySummaries if loaded
+    if (state.historySummaries) {
+      const plan = state.activeDayPlan;
+      const dateStr = state.activeDateStr;
+
+      const blockCount = plan.timeBlocks.length;
+      const totalMinutes = plan.timeBlocks.reduce((sum, b) => sum + (b.endMinutes - b.startMinutes), 0);
+      const deepMinutes = plan.timeBlocks
+        .filter((b) => b.blockType === "DEEP")
+        .reduce((sum, b) => sum + (b.endMinutes - b.startMinutes), 0);
+      const deepWorkHours = plan.metrics.find((m) => m.name === "Hours of Deep Work")?.value ?? "";
+      const captureCount = plan.capturedItems.length;
+
+      const idx = state.historySummaries.findIndex(s => s.id === plan.id || s.date.startsWith(dateStr));
+      const existing = idx !== -1 ? state.historySummaries[idx] : null;
+
+      const hasChanged = !existing ||
+        existing.shutdownComplete !== plan.shutdownComplete ||
+        existing.currentRevisionIndex !== plan.currentRevisionIndex ||
+        existing.dayEndMinutes !== plan.dayEndMinutes ||
+        existing.blockCount !== blockCount ||
+        existing.captureCount !== captureCount ||
+        existing.totalMinutes !== totalMinutes ||
+        existing.deepMinutes !== deepMinutes ||
+        existing.deepWorkHours !== deepWorkHours;
+
+      if (hasChanged) {
+        const newSummary = {
+          id: plan.id,
+          date: existing ? existing.date : plan.date.toISOString(),
+          shutdownComplete: plan.shutdownComplete,
+          currentRevisionIndex: plan.currentRevisionIndex,
+          dayEndMinutes: plan.dayEndMinutes,
+          blockCount,
+          captureCount,
+          totalMinutes,
+          deepMinutes,
+          deepWorkHours,
+        };
+
+        const nextSummaries = [...state.historySummaries];
+        if (idx !== -1) {
+          nextSummaries[idx] = newSummary;
+        } else {
+          nextSummaries.unshift(newSummary);
+          nextSummaries.sort((a, b) => b.date.localeCompare(a.date));
+        }
+
+        setTimeout(() => {
+          usePlannerStore.setState({ historySummaries: nextSummaries });
+        }, 0);
+      }
     }
   }
 });
